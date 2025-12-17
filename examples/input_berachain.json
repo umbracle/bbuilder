@@ -1,0 +1,8 @@
+{
+    "chain": "berachain.mainnet",
+    "module": "berachain",
+    "args": {
+        "beacon_kit": {},
+        "bera_reth": {}
+    }
+}

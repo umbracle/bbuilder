@@ -1,0 +1,8 @@
+{
+    "chain": "polygon.mainnet",
+    "module": "polygon",
+    "args": {
+        "heimdall": {},
+        "bor": {}
+    }
+}

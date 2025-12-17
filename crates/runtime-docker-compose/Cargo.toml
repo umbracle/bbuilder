@@ -1,0 +1,17 @@
+[package]
+name = "runtime-docker-compose"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+spec.workspace = true
+runtime-trait.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_yaml.workspace = true
+eyre.workspace = true
+tokio.workspace = true
+bollard = "0.19.4"
+futures-util = "0.3"
+include_dir.workspace = true
+tinytemplate.workspace = true

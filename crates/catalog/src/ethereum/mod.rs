@@ -1,0 +1,232 @@
+use serde::Deserialize;
+use spec::{
+    Arg, Artifacts, Capabilities, ChainSpec, ComputeResource, DEFAULT_JWT_TOKEN, Deployment,
+    Manifest, Pod, Spec, Volume,
+};
+
+#[derive(Default, Clone)]
+pub enum Chains {
+    #[default]
+    Mainnet,
+    Sepolia,
+}
+
+#[derive(Default, Deserialize)]
+pub struct EthereumDeployment {}
+
+#[derive(Debug, Deserialize)]
+pub struct EthDeploymentInput {
+    pub el_node: ELNode,
+    pub cl_node: CLNode,
+}
+
+impl Deployment for EthereumDeployment {
+    type Input = EthDeploymentInput;
+    type Chains = Chains;
+
+    fn capabilities(&self) -> Vec<ChainSpec<Chains>> {
+        vec![
+            ChainSpec {
+                chain: Chains::Mainnet,
+                min_version: "".to_string(),
+            },
+            ChainSpec {
+                chain: Chains::Sepolia,
+                min_version: "".to_string(),
+            },
+        ]
+    }
+
+    fn manifest(&self, chain: Chains, input: EthDeploymentInput) -> eyre::Result<Manifest> {
+        let mut manifest = Manifest::new("eth".to_string());
+
+        let el_node = match input.el_node {
+            ELNode::Reth(reth) => reth.spec(chain.clone()),
+        };
+        manifest.add_spec("el".to_string(), el_node?);
+
+        let cl_node = match input.cl_node {
+            CLNode::Lighthouse(lighthouse) => lighthouse.spec(chain.clone()),
+            CLNode::Prysm(prysm) => prysm.spec(chain),
+        };
+        manifest.add_spec("cl".to_string(), cl_node?);
+
+        Ok(manifest)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ELNode {
+    Reth(Reth),
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct Reth {}
+
+impl ComputeResource for Reth {
+    type Chains = Chains;
+
+    fn capabilities(&self) -> Capabilities<Chains> {
+        Capabilities {
+            chains: vec![
+                ChainSpec {
+                    chain: Chains::Mainnet,
+                    min_version: "v1.4.8".to_string(),
+                },
+                ChainSpec {
+                    chain: Chains::Sepolia,
+                    min_version: "v1.4.8".to_string(),
+                },
+            ],
+            volumes: vec![Volume {
+                name: "data".to_string(),
+            }],
+        }
+    }
+
+    fn spec(&self, chain: Chains) -> eyre::Result<Pod> {
+        let chain_arg = match chain {
+            Chains::Mainnet => "mainnet",
+            Chains::Sepolia => "sepolia",
+        };
+
+        let node = Spec::builder()
+            .image("ghcr.io/paradigmxyz/reth")
+            .tag("v1.4.8")
+            .arg("node")
+            .arg2("--chain", chain_arg)
+            .arg("--full")
+            .arg2("--color", "never")
+            .arg2(
+                "--authrpc.port",
+                Arg::Port {
+                    name: "authrpc".to_string(),
+                    preferred: 8551,
+                },
+            )
+            .arg2("--authrpc.addr", "0.0.0.0")
+            .arg2("--authrpc.jwtsecret", "/data/jwt_secret")
+            .arg2("--datadir", "/data")
+            .artifact(Artifacts::File(spec::File {
+                name: "jwt".to_string(),
+                target_path: "/data/jwt_secret".to_string(),
+                content: DEFAULT_JWT_TOKEN.to_string(),
+            }));
+
+        Ok(Pod::default().with_spec("node", node))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CLNode {
+    Prysm(Prysm),
+    Lighthouse(Lighthouse),
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct Lighthouse {}
+
+impl ComputeResource for Lighthouse {
+    type Chains = Chains;
+
+    fn capabilities(&self) -> Capabilities<Chains> {
+        Capabilities {
+            chains: vec![
+                ChainSpec {
+                    chain: Chains::Mainnet,
+                    min_version: "v1.4.8".to_string(),
+                },
+                ChainSpec {
+                    chain: Chains::Sepolia,
+                    min_version: "v1.4.8".to_string(),
+                },
+            ],
+            volumes: vec![Volume {
+                name: "data".to_string(),
+            }],
+        }
+    }
+
+    fn spec(&self, chain: Chains) -> eyre::Result<Pod> {
+        let chain_arg = match chain {
+            Chains::Mainnet => "mainnet",
+            Chains::Sepolia => "sepolia",
+        };
+
+        let node = Spec::builder()
+            .image("sigp/lighthouse")
+            .tag("v8.0.0-rc.2")
+            .entrypoint(["lighthouse"])
+            .arg("bn")
+            .arg2("--network", chain_arg)
+            .arg2(
+                "--execution-endpoint",
+                Arg::Ref {
+                    name: "el".to_string(),
+                    port: "authrpc".to_string(),
+                },
+            )
+            .arg2("--execution-jwt", "/data/jwt_secret")
+            .arg2("--datadir", "/data")
+            .artifact(Artifacts::File(spec::File {
+                name: "jwt".to_string(),
+                target_path: "/data/jwt_secret".to_string(),
+                content: DEFAULT_JWT_TOKEN.to_string(),
+            }));
+
+        Ok(Pod::default().with_spec("node", node))
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct Prysm {}
+
+impl ComputeResource for Prysm {
+    type Chains = Chains;
+
+    fn capabilities(&self) -> Capabilities<Chains> {
+        Capabilities {
+            chains: vec![],
+            volumes: vec![],
+        }
+    }
+
+    fn spec(&self, chain: Chains) -> eyre::Result<Pod> {
+        let chain_arg = match chain {
+            Chains::Mainnet => "--mainnet",
+            Chains::Sepolia => "--sepolia",
+        };
+
+        let node = Spec::builder()
+            .image("gcr.io/prysmaticlabs/prysm/beacon-chain")
+            .tag("v6.0.0")
+            .arg(chain_arg)
+            .arg2(
+                "--datadir",
+                Arg::Dir {
+                    name: "prysm_data".to_string(),
+                    path: "/data".to_string(),
+                },
+            )
+            .arg2(
+                "--execution-endpoint",
+                Arg::Ref {
+                    name: "el".to_string(),
+                    port: "authrpc".to_string(),
+                },
+            )
+            .arg2("--jwt-secret", "/data/jwt_secret".to_string())
+            .arg2("--grpc-gateway-host", "0.0.0.0")
+            .arg2("--grpc-gateway-port", "5052")
+            .arg("--accept-terms-of-use")
+            .artifact(Artifacts::File(spec::File {
+                name: "jwt".to_string(),
+                target_path: "/data/jwt_secret".to_string(),
+                content: DEFAULT_JWT_TOKEN.to_string(),
+            }));
+
+        Ok(Pod::default().with_spec("node", node))
+    }
+}

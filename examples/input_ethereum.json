@@ -1,0 +1,12 @@
+{
+    "chain": "ethereum.mainnet",
+    "module": "ethereum",
+    "args": {
+        "el_node": {
+            "reth": {}
+        },
+        "cl_node": {
+            "prysm": {}
+        }
+    }
+}
