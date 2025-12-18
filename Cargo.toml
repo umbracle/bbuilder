@@ -6,7 +6,8 @@ members = [
     "crates/runtime-docker-compose",
     "crates/runtime-trait",
     "crates/catalog",
-    "crates/template"
+    "crates/template",
+    "crates/babel",
 ]
 
 [workspace.dependencies]
