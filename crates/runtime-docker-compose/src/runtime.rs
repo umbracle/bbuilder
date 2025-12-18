@@ -334,3 +334,53 @@ impl Runtime for DockerRuntime {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use spec::{Artifacts, File, Manifest, Pod, Spec};
+
+    #[tokio::test]
+    async fn test_artifact_files_are_mounted_in_volumes() -> eyre::Result<()> {
+        let temp_dir = std::env::temp_dir().join("test-runtime");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let runtime = DockerRuntime::new(temp_dir.to_str().unwrap().to_string());
+
+        let mut manifest = Manifest::new("test-manifest".to_string());
+
+        let file_artifact = File {
+            name: "config.json".to_string(),
+            target_path: "/app/config.json".to_string(),
+            content: r#"{"key": "value"}"#.to_string(),
+        };
+
+        let spec = Spec::builder()
+            .image("test-image")
+            .artifact(Artifacts::File(file_artifact))
+            .build();
+
+        let pod = Pod::default().with_spec("test-service", spec);
+        manifest.add_spec("test-pod".to_string(), pod);
+
+        let docker_compose = runtime.convert_to_docker_compose_spec(manifest)?;
+        let service = docker_compose
+            .services
+            .get("test-pod-test-service")
+            .unwrap();
+
+        let has_config_volume = service
+            .volumes
+            .iter()
+            .any(|v| v.contains("config.json") && v.contains("/app/config.json"));
+
+        assert!(
+            has_config_volume,
+            "Artifact file should be mounted in volumes"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        Ok(())
+    }
+}
