@@ -182,12 +182,12 @@ impl DockerRuntime {
                     let cleaned_arg = match arg {
                         spec::Arg::Value(value) => Some(value),
                         spec::Arg::Dir { path, .. } => Some(path),
-                        spec::Arg::Port { name, preferred } => {
+                        spec::Arg::Port { preferred, .. } => {
                             ports.push(Port {
                                 host: preferred,
                                 container: preferred,
                             });
-                            Some(format!("--{}={}", name, preferred))
+                            Some(format!("{}", preferred))
                         }
                         spec::Arg::File(file) => {
                             artifacts_to_process.push(spec::Artifacts::File(file));
@@ -315,7 +315,7 @@ impl Runtime for DockerRuntime {
         let docker_compose_spec = self.convert_to_docker_compose_spec(manifest)?;
 
         // Write the compose file in the parent folder
-        let compose_file_path = parent_folder.join("docker_compose.yaml");
+        let compose_file_path = parent_folder.join("docker-compose.yaml");
         std::fs::write(
             compose_file_path.clone(),
             serde_yaml::to_string(&docker_compose_spec)?,
@@ -382,5 +382,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_port_arg_uses_preferred_port() {
+        let temp_dir = std::env::temp_dir().join("test-runtime-port");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let runtime = DockerRuntime::new(temp_dir.to_str().unwrap().to_string());
+
+        let mut manifest = Manifest::new("port-test".to_string());
+
+        let spec = Spec::builder()
+            .image("test-image")
+            .arg(spec::Arg::Port {
+                name: "rpc-port".to_string(),
+                preferred: 8545,
+            })
+            .build();
+
+        let pod = Pod::default().with_spec("service", spec);
+        manifest.add_spec("pod".to_string(), pod);
+
+        let docker_compose = runtime.convert_to_docker_compose_spec(manifest).unwrap();
+        let service = docker_compose.services.get("pod-service").unwrap();
+
+        assert_eq!(
+            service.command,
+            ["8545"],
+            "Command should contain port arg with preferred port"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
