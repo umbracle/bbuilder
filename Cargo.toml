@@ -8,6 +8,7 @@ members = [
     "crates/catalog",
     "crates/template",
     "crates/babel",
+    "crates/fetcher"
 ]
 
 [workspace.dependencies]
